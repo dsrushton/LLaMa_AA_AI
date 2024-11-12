@@ -1,0 +1,91 @@
+using UnityEngine;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+// Add your API client namespaces here (e.g., for Llama/Gemini)
+
+public class ResponseGenerator : MonoBehaviour
+{
+    private const string DefaultPrompt = @"You are an AI assistant knowledgeable about the Twelve Steps and Twelve Traditions of Alcoholics Anonymous. 
+Your task is to provide accurate and helpful information based on the principles of AA. 
+Be compassionate and supportive in your responses, while maintaining the integrity of AA's message.";
+
+    // Reference to your vector database/retriever
+    private IVectorRetriever vectorRetriever;
+    // Reference to your LLM client
+    private ILLMClient llmClient;
+
+    public async Task<string> GenerateResponseAsync(
+        string query, 
+        string customPrompt, 
+        List<string> sessionContext)
+    {
+        try
+        {
+            // Get relevant information from vector database
+            var relevantInfo = await vectorRetriever.RetrieveRelevantInfoAsync(query);
+            var formattedContext = FormatRetrievedInfo(relevantInfo);
+            
+            // Format session context
+            var sessionContextStr = string.Join("\n", sessionContext);
+            
+            // Build the prompt
+            var promptBuilder = new StringBuilder();
+            promptBuilder.AppendLine(customPrompt);
+            promptBuilder.AppendLine("Here is some relevant information:");
+            promptBuilder.AppendLine(formattedContext);
+            promptBuilder.AppendLine("Previous context from this session:");
+            promptBuilder.AppendLine(sessionContextStr);
+            promptBuilder.AppendLine("Now, please answer the following question:");
+            promptBuilder.AppendLine(query);
+            promptBuilder.AppendLine("Answer:");
+
+            // Generate response using your chosen LLM
+            var response = await llmClient.GenerateResponseAsync(
+                promptBuilder.ToString(),
+                maxTokens: 150,
+                temperature: 0.4f
+            );
+
+            // Extract the answer portion
+            var answerParts = response.Split("Answer:", 
+                System.StringSplitOptions.RemoveEmptyEntries);
+            return answerParts.LastOrDefault()?.Trim() ?? string.Empty;
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"Error generating response: {ex.Message}");
+            return "I apologize, but I encountered an error processing your request.";
+        }
+    }
+
+    private string FormatRetrievedInfo(List<RelevantInfo> info)
+    {
+        // Implement your formatting logic here
+        return string.Join("\n", info.Select(i => i.Text));
+    }
+}
+
+// Interface for vector retrieval
+public interface IVectorRetriever
+{
+    Task<List<RelevantInfo>> RetrieveRelevantInfoAsync(string query);
+}
+
+// Interface for LLM client
+public interface ILLMClient
+{
+    Task<string> GenerateResponseAsync(
+        string prompt, 
+        int maxTokens, 
+        float temperature
+    );
+}
+
+// Data structure for relevant information
+public class RelevantInfo
+{
+    public string Text { get; set; }
+    public float Similarity { get; set; }
+}
